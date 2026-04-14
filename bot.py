@@ -1,4 +1,5 @@
 import os
+import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -10,32 +11,41 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Send me any file and I will give you a download link.")
+    await update.message.reply_text(
+        "👋 Send me any file and I will give you a Pixeldrain download link."
+    )
 
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = update.message.document or update.message.video or update.message.audio
 
     if not file:
-        await update.message.reply_text("Send a valid file.")
+        await update.message.reply_text("❌ Please send a valid file.")
         return
+
+    msg = await update.message.reply_text("⬇ Downloading file...")
 
     file_obj = await context.bot.get_file(file.file_id)
 
     file_path = os.path.join(DOWNLOAD_DIR, file.file_name or f"{file.file_id}")
 
-    await update.message.reply_text("Downloading...")
-
     await file_obj.download_to_drive(file_path)
 
-    await update.message.reply_text("Uploading...")
+    await msg.edit_text("📤 Uploading to Pixeldrain...")
 
-    link = upload_to_pixeldrain(file_path)
+    # run blocking upload in thread
+    loop = asyncio.get_event_loop()
+    link = await loop.run_in_executor(None, upload_to_pixeldrain, file_path)
 
     if link:
-        await update.message.reply_text(f"Download Link:\n{link}")
+        await msg.edit_text(f"✅ Done!\n\n🔗 {link}")
     else:
-        await update.message.reply_text("Upload failed")
+        await msg.edit_text("❌ Upload failed")
+
+    try:
+        os.remove(file_path)
+    except:
+        pass
 
 
 def main():
